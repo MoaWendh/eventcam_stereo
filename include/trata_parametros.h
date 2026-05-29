@@ -90,13 +90,20 @@ struct PARAMETROS_GERAIS {
 // que é responsável por criar os frames a partir dos eventos capturados pela câmera, e exibi-los em tempo real no viewer.
 struct parametrosFrameGenerator{ 
     std::mutex mutex;
-    cv::Mat frame_L, frame_R;
+    cv::Mat frame_L;
+    cv::Mat frame_R;
     cv::Mat dashboard;
-    cv::Mat roi_L, roi_R, roi_menu;
+    cv::Mat canvas_cam_L;
+    cv::Mat canvas_cam_R;
+    cv::Mat canvas_menu;
+    cv::Mat canvas_stereo;
     std::atomic<bool> showViewer{true};
     std::string window_name_single = "Visualizacao - Single Câmera";
     std::string window_name_stereo = "Visualizacao - Sist. Estéreo";
-    int largura_menu = 300;
+    int largura_canvas_menu = 600;
+    int altura_canvas_menu = 600;
+    Metavision::timestamp tam_buff_uSeg= 10000;
+    uint16_t taxa_geracao_frames= 30;
     std::vector<std::unique_ptr<Metavision::CDFrameGenerator>> generators;
 };
 

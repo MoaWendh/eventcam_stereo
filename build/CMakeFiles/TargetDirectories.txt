@@ -1,3 +1,0 @@
-/home/jetson/workspace_eventcam/projects/eventcam_stereo/build/CMakeFiles/eventcam_stereo.dir
-/home/jetson/workspace_eventcam/projects/eventcam_stereo/build/CMakeFiles/edit_cache.dir
-/home/jetson/workspace_eventcam/projects/eventcam_stereo/build/CMakeFiles/rebuild_cache.dir

@@ -16,7 +16,7 @@ find_package(Boost COMPONENTS program_options REQUIRED)
 add_compile_definitions(BOOST_BIND_GLOBAL_PLACEHOLDERS)
 
 # OpenCV (Para a janela gráfica e processamento de frames)
-find_package(OpenCV REQUIRED COMPONENTS core highgui imgproc)
+find_package(OpenCV REQUIRED COMPONENTS core highgui imgproc viz)
 
 # Libgpiod (Para o controle dos pinos da Jetson)
 find_package(PkgConfig REQUIRED)

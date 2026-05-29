@@ -26,6 +26,7 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/viz.hpp>
 
 #include <metavision/sdk/core/utils/cd_frame_generator.h>
 #include <metavision/sdk/stream/camera.h>
@@ -415,58 +416,59 @@ void MenuFrame(const cv::Mat& input, cv::Mat& output) {
 
 
 
-// Esta função é responsável por configurar a visualização dos frames das câmeras de eventos e do menu no dashboard.
-// Ela inicializa as ROIs para cada câmera e para o menu, configura os geradores de frames para cada câmera de eventos, e define os callbacks para atualizar os frames em tempo real.
+// Esta função é responsável por preparar a infraestrutura visual do sistema, Menu de Usuário" e as 
+// janelas de exibição das câmaras de evntos. Ela aloca dinamicamente os acumuladores de eventos, chamdos Generators,
+// define os parâmetros temporais de integração dos dados assíncronos, configura o frame de exibição e regista 
+// as rotinas, callbacks, que capturam os fluxos de dados de eventos brutos vindos do hardware via USB.
+// Parâmetros de entrada:
+//      - paramVis: Referência para a estrutura de contexto global da aplicação, armazena matrizes, mutexes e flags.
+//      - event_cam: Ponteiro ou array contendo as instâncias de hardware das câmaras Metavision, Master e Slave.
+//      - numCams: Inteiro que define o número de câmaras ativas no sistema, 1 para Monocular, 2 para Estéreo.
+//      - cam_w: Largura nativa da resolução do sensor de eventos, em pixels.
+//      - cam_h: Altura nativa da resolução do sensor de eventos, em pixels.
+//
+// Ela captura uma amostragem discreta sobre um fluxo contínuo. Os eventos são acumulados em buffers temporais 
+// antes de serem convertidos em matrizes bidimensionais, cv::Mat, compatíveis com o OpenCV..
+// Ela inicializa os Canvas para cada câmera e para o menu, configura os geradores de frames para cada câmera de eventos.
 void configuraVisualizer(parametrosFrameGenerator &ctx, EventCamera event_cam[], int numCams, int cam_w, int cam_h) {
-    int largura_total = (cam_w * numCams) + ctx.largura_menu;
+    int largura_canvas_stereo = (cam_w * numCams);
 
-    // Inicializa o Dashboard e as ROIs
-    ctx.dashboard = cv::Mat::zeros(cam_h, largura_total, CV_8UC3);
-    ctx.roi_L = ctx.dashboard(cv::Rect(0, 0, cam_w, cam_h));
-    std::string window_name;
+    //Aloca a memória para o canvas estéreo a qual o loop while usa para executar o cv::imshow():
+    ctx.canvas_stereo = cv::Mat::zeros(cam_h, largura_canvas_stereo, CV_8UC3);
+    ctx.canvas_cam_L = ctx.canvas_stereo(cv::Rect(0, 0, cam_w, cam_h));
 
-    if (numCams == 2) {
-        ctx.roi_R = ctx.dashboard(cv::Rect(cam_w, 0, cam_w, cam_h));
-        ctx.roi_menu = ctx.dashboard(cv::Rect(cam_w * 2, 0, ctx.largura_menu, cam_h));
-        window_name= ctx.window_name_stereo;
-    } else {
-        ctx.roi_menu = ctx.dashboard(cv::Rect(cam_w, 0, ctx.largura_menu, cam_h));
-        window_name= ctx.window_name_single;
-    }
+    // Só ativa o canvas para visualizar a visão estérreo apensa se numCams=2:
+    if (numCams==2) {
+        ctx.canvas_cam_R = ctx.canvas_stereo(cv::Rect(cam_w, 0, cam_w, cam_h));
+    } 
 
-    // Limpa os geradores antigos para evitar lixo de execuções anteriores
+    // Sempre ativa o canvas do menu com opçoes de escolhas para o usuario:
+    ctx.canvas_menu = cv::Mat::zeros(ctx.altura_canvas_menu, ctx.largura_canvas_menu, CV_8UC3);
+
+    // Os "generators", especificamente a classe Metavision::CDFrameGenerator, são acumuladores e tradutores de dados bidimensionais.
+    // A função  deles é atuar como uma ponte entre o hardware e o olho humano. 
+    // A função dles é pegar o fluxo contínuo de dados de eventos puros, assíncronos, e acumular dentro de uma janela de tempo fixa, 
+    // neste caso, 10000us, 10ms. Com esses os agrupados, eles geram uma matriz de imagem convencional a uma taxa fixa, por exemplo 30Hz,
+    // transformando dados binários  em frames visíveis pelo OpenCV.
+    // Limpar os geradores antigos para evitar lixo de execuções anteriores:
     ctx.generators.clear();
 
-    // Configura Câmera 1 / Esquerda (Sempre existe)
+    // Configura Câmera 1, esquerda:
     ctx.generators.push_back(std::make_unique<Metavision::CDFrameGenerator>(cam_w, cam_h));
-    ctx.generators[0]->set_display_accumulation_time_us(10000);
+    ctx.generators[0]->set_display_accumulation_time_us(ctx.tam_buff_uSeg);
     ctx.generators[0]->set_color_palette(Metavision::ColorPalette::Dark);
-    
-    ctx.generators[0]->start(30, [&ctx](const Metavision::timestamp &ts, const cv::Mat &frame) {
-        if (ctx.showViewer) {
-            std::unique_lock<std::mutex> lock(ctx.mutex);
-            frame.copyTo(ctx.frame_L); 
-        }
-    });
 
     event_cam[0].setCDCallback([&ctx](const Metavision::EventCD *ev_begin, const Metavision::EventCD *ev_end) {
-        if (ctx.showViewer && !ctx.generators.empty()) {
-            ctx.generators[0]->add_events(ev_begin, ev_end);
-        }
+                                    if (ctx.showViewer && !ctx.generators.empty()) {
+                                    ctx.generators[0]->add_events(ev_begin, ev_end);
+                                    }
     });
 
-    // Configura Câmera 2 / Direita (Apenas se numCams == 2)
+    // Configura Câmera 2, direita, apenas se numCams == 2:
     if (numCams == 2) {
         ctx.generators.push_back(std::make_unique<Metavision::CDFrameGenerator>(cam_w, cam_h));
-        ctx.generators[1]->set_display_accumulation_time_us(10000);
+        ctx.generators[1]->set_display_accumulation_time_us(ctx.tam_buff_uSeg);
         ctx.generators[1]->set_color_palette(Metavision::ColorPalette::Dark);
-
-        ctx.generators[1]->start(30, [&ctx](const Metavision::timestamp &ts, const cv::Mat &frame) {
-            if (ctx.showViewer) {
-                std::unique_lock<std::mutex> lock(ctx.mutex);
-                frame.copyTo(ctx.frame_R);
-            }
-        });
 
         event_cam[1].setCDCallback([&ctx](const Metavision::EventCD *ev_begin, const Metavision::EventCD *ev_end) {
             if (ctx.showViewer && ctx.generators.size() > 1) {
@@ -477,28 +479,36 @@ void configuraVisualizer(parametrosFrameGenerator &ctx, EventCamera event_cam[],
 
 
     // Desenha o Menu Estático
-    std::vector<std::string> itens = {"--- Menu de Usuario ---", 
+    std::vector<std::string> itens = {"-----------------------", 
                                       "1 - Ler Biases", 
                                       "2 - Gravar Biases", 
                                       "3 - Trigger REC", 
                                       "4 - Blink LED", 
                                       "5 - Cam. Convencional", 
-                                      "-----------------------", 
-                                      "+ / - : Potencia LED", 
-                                      "> / < : Duracao Pulso", 
+                                      "6 - Load eventos de arquivo .raw",
+                                      "7 - Ligar/Desligar exibicao eventos",
+                                      " ",
+                                      "+ / - : Varia potencia LED", 
+                                      "> / < : Varia Duracao Pulso",
+                                      "-----------------------",                                       
+                                      " ", 
                                       "Q - Sair"};
     
     // Configura a cor de fundo do canvas do menu:
-    ctx.roi_menu.setTo(cv::Scalar(220, 220, 220));
+    ctx.canvas_menu.setTo(cv::Scalar(220, 220, 220));
 
     // Configura o canvas do menu:
     for (size_t i = 0; i < itens.size(); ++i) {
-        cv::putText(ctx.roi_menu, itens[i], cv::Point(20, 40 + i * 35), 
-                    cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
+        if (i<13)
+            cv::putText(ctx.canvas_menu, itens[i], cv::Point(20, 70 + i*40), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
+        else
+            cv::putText(ctx.canvas_menu, itens[i], cv::Point(20, 70 + i*40), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
     }
 
-    cv::namedWindow(window_name, cv::WINDOW_AUTOSIZE);
+    // Cria a janela em modo Autosize:
+    cv::namedWindow("Menu de Usuario", cv::WINDOW_AUTOSIZE);    
 }
+
 
 
 // Metodo para carregar os eventos a aprtir de arquivo de dados do tipo .raw:
@@ -550,10 +560,14 @@ bool loadEventos(std::vector<Metavision::EventCD> &buff, std::string filePath){
 }
 
 
+
 // Funcção principal:
 int main(int argc, char *argv[]) {
     // Rotina que limpa o terminal:
     limparTela();
+
+    // Define o nome e path do arquivo que será lido para análise:
+    std::string eventFileName= "../out/data_evecam_27_05_2026/L/evecam_sn_00000680_133955.raw";
 
     // Carrgea os parametros gerais definidos na struct "PARAMETROS_GERAIS" do header "parametros.h":
     PARAMETROS_GERAIS parametros_gerais;
@@ -670,18 +684,18 @@ int main(int argc, char *argv[]) {
     // Ou seja, quando a câmera é master, para configurar o sincronismo de hardware. 
     // Caso contrário, o valor padrão é "false", ou seja, a câmera é slave.
     // Define se o sistema sera mono ou estéreo:
-    const int numCams= 2;
+    const int numCams= 1;
 
 
-    
+    /*
     // Instanciação dos objetos que controlam o hardware das câmeras de eventos:
     EventCamera event_cam[numCams] = {
             EventCamera(parametros_gerais.serialNumber_event_cam3, "Left", true),
             EventCamera(parametros_gerais.serialNumber_event_cam2, "Right", false)
     };
-    
+    */
 
-    //EventCamera event_cam[numCams] = { EventCamera(parametros_gerais.serialNumber_event_cam3, "Left", true)};    
+    EventCamera event_cam[numCams] = { EventCamera(parametros_gerais.serialNumber_event_cam3, "Left", true)};    
 
     // Configura alguns parametros iniciais para cada câmera de eventos, como o bias, trigger e sincronismo de hardware, 
     // usando as funções da classe EventCamera, que por sua vez utilizam a API do SDK Metavision:
@@ -699,6 +713,7 @@ int main(int argc, char *argv[]) {
         // onde a câmera master é a "Left" e a slave é a "Right":
         event_cam[i].configSincronismo();
 
+        // Se numCams=2 a segunda camera será inicializada:
         if (i==1)
             event_cam[i].callStart();
 
@@ -711,27 +726,25 @@ int main(int argc, char *argv[]) {
     // Instanci a struct que contem os parâmetros para configurar o construtor da visualização, 
     // que é o objeto responsável por gerenciar a visualização dos frames das câmeras de eventos e do menu no dashboard:
     parametrosFrameGenerator paramVis;
+ 
+    // Inicializa e configura o pipeline de visualização gráfica para o sistema de câmaras de eventos:
     configuraVisualizer(paramVis, event_cam, numCams, cam_w, cam_h);
 
     // Dispara o funcionamenoe das câmeras de eventos.
     // A partir deste ponto, as câmeras de eventos começam a capturar e gerar frames, 
     // que são processados pelos geradores de frames e exibidos no dashboard em tempo real.
-    // A contagem do laço for é invertida porque a câmera SLAVE deve ser iniciada antes da MASTER para 
-    // garantir que ela esteja pronta para receber os sinais de sincronismo e trigger da master.
-    /*for (int i=numCams-1; i>=0; i--){
-        //event_cam[i].configSincronismo();
-        event_cam[i].callStart();
-    }*/ 
-
-    for (int i=0;i<numCams-1;i++){
-        //event_cam[i].configSincronismo();
-        event_cam[i].callStart();
-    } 
+    // Para o sicnronismo de tempo funcionar adequadametnte, a contagem do laço for deve ser invertida 
+    // porque a câmera SLAVE [1] deve ser iniciada antes da MASTER [0] para garantir que ela esteja pronta para r
+    // eceber os sinais de sincronismo temporal:
+    for (int i = numCams - 1; i >= 0; i--) {
+        event_cam[i].callStart(); 
+    }
 
     
     // Instacia objeto ledLight para controlar o estado do Led ou lase de luz estruturada:
     LightController ledLight;
     bool running = true;
+    bool exibeStereo = false; // Controla se a janela estéreo está aberta ou fechada
         
     // Loop principal:    
     while(running) {
@@ -739,58 +752,41 @@ int main(int argc, char *argv[]) {
         int key = cv::waitKey(1);
 
         if (paramVis.showViewer) {
-            std::unique_lock<std::mutex> lock(paramVis.mutex);
+            // Menu de opções sempre visível:
+            cv::imshow("Menu de Usuario", paramVis.canvas_menu);
 
-            // Atualiza o frame da câmera esquerda:
-            if (!paramVis.frame_L.empty()) {
-                if (paramVis.frame_L.channels() == 1)
-                    cv::cvtColor(paramVis.frame_L, paramVis.roi_L, cv::COLOR_GRAY2BGR);
-                else
-                    paramVis.frame_L.copyTo(paramVis.roi_L);
+            // Só exibirá os frames stereo com dados de eventos apenas se a opção "7" ativar "exibeStereo":
+            if (exibeStereo) {
+                std::unique_lock<std::mutex> lock(paramVis.mutex);
 
-                // Inse3re texto no frame da câmera esquerda para identificar que é a câmera slave:
-                std::string label_L = (numCams == 2) ? "Left (Sync Master)" : "Left (Mono Mode)";
-                cv::putText(paramVis.roi_L, label_L, cv::Point(15, 30), 
-                cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
+                // Atualiza e formata o frame esquerdo no canvas_stereo, canvas ROI da Esquerda
+                if (!paramVis.frame_L.empty()) {
+                    if (paramVis.frame_L.channels() == 1)
+                        cv::cvtColor(paramVis.frame_L, paramVis.canvas_cam_L, cv::COLOR_GRAY2BGR);
+                    else
+                        paramVis.frame_L.copyTo(paramVis.canvas_cam_L);
 
-            }
+                    cv::putText(paramVis.canvas_cam_L, "Left (Sync Master)", cv::Point(15, 30), 
+                                cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
+                }
 
-            //  Atualiza o frame da câmera direita:
-            if (numCams == 2) {
+                // Atualiza e formata o frame direito no canvas_stereo, canvas ROI da Direita:
                 if (!paramVis.frame_R.empty()) {
                     if (paramVis.frame_R.channels() == 1)
-                        cv::cvtColor(paramVis.frame_R, paramVis.roi_R, cv::COLOR_GRAY2BGR);
+                        cv::cvtColor(paramVis.frame_R, paramVis.canvas_cam_R, cv::COLOR_GRAY2BGR);
                     else
-                        paramVis.frame_R.copyTo(paramVis.roi_R);
-                    // Inse3re texto no frame da câmera direita para identificar que é a câmera slave:    
-                    cv::putText(paramVis.roi_R, "Right (Sync Slave)", cv::Point(15, 30), 
-                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);                         
+                        paramVis.frame_R.copyTo(paramVis.canvas_cam_R);
+
+                    cv::putText(paramVis.canvas_cam_R, "Right (Sync Slave)", cv::Point(15, 30), 
+                                cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
                 }
-               
-            } 
-            /*
-            else {
-                // Se estiver em modo Mono, mantém a ROI_R com o aviso
-                // Criar um fundo levemente diferente ajuda a distinguir que está desativado
-                paramVis.roi_R.setTo(cv::Scalar(20, 20, 20)); 
-                cv::putText(paramVis.roi_R, "MODO MONO ATIVO", cv::Point(cam_w/4, cam_h/2), 
-                            cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 150), 2, cv::LINE_AA);
-                /*
-                paramVis.roi_R = cv::Scalar(20, 20, 20); 
-                cv::putText(paramVis.roi_R, "MODO MONO ATIVO", cv::Point(cam_w/4, cam_h/2), 
-                            cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 150), 2);
-                            
-            }
-            */
+
+                // Exibe a janela estéreo combinada:
+                cv::imshow("Visualizador Estereo", paramVis.canvas_stereo);
+            }            
         }
 
-        // Exibe o Dashboard:
-        if (numCams==2)
-            cv::imshow(paramVis.window_name_stereo, paramVis.dashboard);
-        else
-            cv::imshow(paramVis.window_name_single, paramVis.dashboard);          
-
-
+       
         // Máquina de estados do menu principal:
         if (key!=-1){
             char my_char= static_cast<char>(key);
@@ -862,12 +858,56 @@ int main(int argc, char *argv[]) {
                         }  
                         
                 case '6':{
-                    std::string eventFileName= "../out/data_evecam_27_05_2026/L/evecam_sn_00000680_133955.raw";
+                    //std::string eventFileName= "../out/data_evecam_27_05_2026/L/evecam_sn_00000680_133955.raw";
                     if (loadEventos(buffEventos, eventFileName)){
                         std::cout<< "Eventos carregados no buffer." << std::endl;
                     }
                     break;
-                }        
+                } 
+                
+
+                case '7': {
+                    // Togle, inverte o estado:
+                    exibeStereo = !exibeStereo; 
+
+                    if (exibeStereo) {
+                        // Cria a janela do OpenCV dedicada para os dados de eventios 
+                        cv::namedWindow("Visualizador Estereo", cv::WINDOW_AUTOSIZE);
+                        
+                        // Ativa as threads de renderização em 30Hz, este valor esta definido em "paramVis.taxa_geracao_frames":
+                        if (!paramVis.generators.empty()) {
+                            paramVis.generators[0]->start(paramVis.taxa_geracao_frames, [&paramVis](const Metavision::timestamp &ts, const cv::Mat &frame) {
+                                if (paramVis.showViewer) {
+                                    std::unique_lock<std::mutex> lock(paramVis.mutex);
+                                    frame.copyTo(paramVis.frame_L);
+                                }
+                            });
+                            
+                            if (paramVis.generators.size() > 1) {
+                                paramVis.generators[1]->start(paramVis.taxa_geracao_frames, [&paramVis](const Metavision::timestamp &ts, const cv::Mat &frame) {
+                                    if (paramVis.showViewer) {
+                                        std::unique_lock<std::mutex> lock(paramVis.mutex);
+                                        frame.copyTo(paramVis.frame_R);
+                                    }
+                                });
+                            }
+                        }
+                    } 
+                    else {
+                        // Desativa as threads:
+                        for (auto& gen : paramVis.generators) {
+                            if (gen) gen->stop();
+                        }
+                        
+                        // Destrói a janela de vídeo e limpa a tela do Ubuntu
+                        cv::destroyWindow("Visualizador Estereo");
+                        
+                        // Limpa os buffers antigos para não iniciar com imagem congaleda da próxima ativação:
+                        paramVis.frame_L = cv::Mat();
+                        paramVis.frame_R = cv::Mat();
+                    }
+                    break;
+                }                
                 
                 case '.':
                 case '>': // Incrementa o pwm que controla o tempo de atuação do Led, duração do blink do Led
