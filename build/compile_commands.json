@@ -1,0 +1,22 @@
+[
+{
+  "directory": "/home/jetson/workspace_eventcam/projects/eventcam_stereo/build",
+  "command": "/usr/bin/aarch64-linux-gnu-g++ -DBOOST_ALL_NO_LIB -DBOOST_BIND_GLOBAL_PLACEHOLDERS -DBOOST_CHRONO_DYN_LINK -DBOOST_PROGRAM_OPTIONS_DYN_LINK -DBOOST_TIMER_DYN_LINK -I/opt/spinnaker/include -I/home/jetson/workspace_eventcam/projects/eventcam_stereo/include -isystem /usr/include/opencv4 -g -std=gnu++17 -o CMakeFiles/eventcam_stereo.dir/eventcam_stereo.cpp.o -c /home/jetson/workspace_eventcam/projects/eventcam_stereo/eventcam_stereo.cpp",
+  "file": "/home/jetson/workspace_eventcam/projects/eventcam_stereo/eventcam_stereo.cpp"
+},
+{
+  "directory": "/home/jetson/workspace_eventcam/projects/eventcam_stereo/build",
+  "command": "/usr/bin/aarch64-linux-gnu-g++ -DBOOST_ALL_NO_LIB -DBOOST_BIND_GLOBAL_PLACEHOLDERS -DBOOST_CHRONO_DYN_LINK -DBOOST_PROGRAM_OPTIONS_DYN_LINK -DBOOST_TIMER_DYN_LINK -I/opt/spinnaker/include -I/home/jetson/workspace_eventcam/projects/eventcam_stereo/include -isystem /usr/include/opencv4 -g -std=gnu++17 -o CMakeFiles/eventcam_stereo.dir/trata_IO.cpp.o -c /home/jetson/workspace_eventcam/projects/eventcam_stereo/trata_IO.cpp",
+  "file": "/home/jetson/workspace_eventcam/projects/eventcam_stereo/trata_IO.cpp"
+},
+{
+  "directory": "/home/jetson/workspace_eventcam/projects/eventcam_stereo/build",
+  "command": "/usr/bin/aarch64-linux-gnu-g++ -DBOOST_ALL_NO_LIB -DBOOST_BIND_GLOBAL_PLACEHOLDERS -DBOOST_CHRONO_DYN_LINK -DBOOST_PROGRAM_OPTIONS_DYN_LINK -DBOOST_TIMER_DYN_LINK -I/opt/spinnaker/include -I/home/jetson/workspace_eventcam/projects/eventcam_stereo/include -isystem /usr/include/opencv4 -g -std=gnu++17 -o CMakeFiles/eventcam_stereo.dir/trata_convcam.cpp.o -c /home/jetson/workspace_eventcam/projects/eventcam_stereo/trata_convcam.cpp",
+  "file": "/home/jetson/workspace_eventcam/projects/eventcam_stereo/trata_convcam.cpp"
+},
+{
+  "directory": "/home/jetson/workspace_eventcam/projects/eventcam_stereo/build",
+  "command": "/usr/bin/aarch64-linux-gnu-g++ -DBOOST_ALL_NO_LIB -DBOOST_BIND_GLOBAL_PLACEHOLDERS -DBOOST_CHRONO_DYN_LINK -DBOOST_PROGRAM_OPTIONS_DYN_LINK -DBOOST_TIMER_DYN_LINK -I/opt/spinnaker/include -I/home/jetson/workspace_eventcam/projects/eventcam_stereo/include -isystem /usr/include/opencv4 -g -std=gnu++17 -o CMakeFiles/eventcam_stereo.dir/trata_evcam.cpp.o -c /home/jetson/workspace_eventcam/projects/eventcam_stereo/trata_evcam.cpp",
+  "file": "/home/jetson/workspace_eventcam/projects/eventcam_stereo/trata_evcam.cpp"
+}
+]
